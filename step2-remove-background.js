@@ -1,6 +1,6 @@
 const fs = require('fs');
 const path = require('path');
-const { fal } = require("@fal-ai/client");
+const { removeBackground } = require('@imgly/background-removal-node');
 
 const workDir = process.argv[2] || '.';
 const OUTPUT_DIR = path.join(workDir, 'output');
@@ -11,72 +11,46 @@ if (!fs.existsSync(OUTPUT_DIR)) {
   fs.mkdirSync(OUTPUT_DIR, { recursive: true });
 }
 
-async function removeBackgroundWithFal(imagePath) {
-  console.log('Removing background using fal.ai Bria service...');
+async function removeBackgroundLocal(imagePath) {
+  console.log('Removing background using local @imgly/background-removal-node...');
   console.log(`Input: ${imagePath}`);
   
   try {
-    // Read the image file
-    console.log('Reading image file...');
-    const imageBuffer = fs.readFileSync(imagePath);
+    const fileUrl = 'file://' + path.resolve(imagePath).replace(/\\/g, '/');
+    console.log('Processing image (this may download a model on the first run)...');
     
-    // Convert to base64 data URI
-    const base64Image = imageBuffer.toString('base64');
-    const mimeType = 'image/png';
-    const imageUrl = `data:${mimeType};base64,${base64Image}`;
+    const blob = await removeBackground(fileUrl);
+    const buffer = Buffer.from(await blob.arrayBuffer());
     
-    console.log('Uploading to fal.ai and processing...');
+    fs.writeFileSync(BG_REMOVED_IMAGE, buffer);
     
-    // Call fal.ai background removal API
-    const result = await fal.subscribe("fal-ai/bria/background/remove", {
-      input: {
-        image_url: imageUrl
-      },
-      logs: true,
-      onQueueUpdate: (update) => {
-        if (update.status === "IN_PROGRESS") {
-          update.logs.map((log) => log.message).forEach(console.log);
-        }
-      },
-    });
-    
-    console.log('Processing complete!');
-    console.log(`Request ID: ${result.requestId}`);
-    
-    // Download the result image
-    if (result.data && result.data.image && result.data.image.url) {
-      console.log('Downloading result image...');
-      const response = await fetch(result.data.image.url);
-      const resultBuffer = Buffer.from(await response.arrayBuffer());
-      
-      // Save the result
-      fs.writeFileSync(BG_REMOVED_IMAGE, resultBuffer);
-      
-      console.log(`✅ Background removed successfully!`);
-      console.log(`📁 Saved to: ${BG_REMOVED_IMAGE}`);
-      console.log(`📐 Image dimensions: ${result.data.image.width}x${result.data.image.height}`);
-      
-      return BG_REMOVED_IMAGE;
-    } else {
-      throw new Error('No image URL in response');
-    }
-    
+    console.log(`✅ Background removed successfully!`);
+    console.log(`📁 Saved to: ${BG_REMOVED_IMAGE}`);
+    return true;
   } catch (error) {
     console.error('❌ Background removal failed:', error.message);
     throw error;
   }
 }
 
-console.log('🎨 Step 2: Removing background from last frame...');
-console.log(`WorkDir: ${workDir}`);
-
-removeBackgroundWithFal(INPUT_IMAGE)
-  .then(() => {
-    console.log('\n✨ Step 2 complete!');
-    console.log(`Next: Add thick white borders to ${BG_REMOVED_IMAGE}`);
-  })
-  .catch((err) => {
-    console.error('❌ Step 2 failed:', err.message);
-    console.error(err);
+async function main() {
+  console.log('🎨 Step 2: Removing background from last frame...');
+  console.log(`WorkDir: ${workDir}`);
+  
+  if (!fs.existsSync(INPUT_IMAGE)) {
+    console.error(`❌ Input file not found: ${INPUT_IMAGE}`);
+    console.log('Have you run step1-extract-last-frame.js first?');
     process.exit(1);
-  });
+  }
+  
+  try {
+    await removeBackgroundLocal(INPUT_IMAGE);
+    console.log('\n✨ Step 2 complete!');
+    console.log(`Next: Add borders with output\\bg-removed.png`);
+  } catch (error) {
+    console.error(`❌ Step 2 failed: ${error.message}`);
+    process.exit(1);
+  }
+}
+
+main();

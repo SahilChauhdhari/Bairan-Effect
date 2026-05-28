@@ -2,11 +2,11 @@ const ffmpeg = require('fluent-ffmpeg');
 const path = require('path');
 const fs = require('fs');
 
-ffmpeg.setFfmpegPath('ffmpeg');
-ffmpeg.setFfprobePath('ffprobe');
+ffmpeg.setFfmpegPath(require('ffmpeg-static'));
+ffmpeg.setFfprobePath(require('ffprobe-static').path);
 
 const workDir = process.argv[2] || '.';
-const INPUT_VIDEO = path.join(workDir, 'main-video.MP4');
+const INPUT_VIDEO = path.join(workDir, 'rosh-freeze.MP4');
 const OUTPUT_DIR = path.join(workDir, 'output');
 const LAST_FRAME_IMAGE = path.join(OUTPUT_DIR, 'last-frame.png');
 
@@ -32,10 +32,10 @@ async function extractLastFrame(inputPath, outputPath) {
   try {
     const duration = await getVideoDuration(inputPath);
     
-    // Calculate timestamp for last frame (slightly before end to ensure we get a frame)
-    const lastFrameTime = Math.max(0, duration - 0.1);
+    // Calculate timestamp for first frame
+    const lastFrameTime = 0;
     
-    console.log(`Extracting last frame at ${lastFrameTime}s...`);
+    console.log(`Extracting first frame at ${lastFrameTime}s...`);
     
     return new Promise((resolve, reject) => {
       ffmpeg(inputPath)

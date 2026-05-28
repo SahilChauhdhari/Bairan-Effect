@@ -2,8 +2,9 @@ const { execSync } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 const heicConvert = require('heic-convert');
-
-const FFMPEG = 'ffmpeg';
+const sharp = require('sharp');
+const FFMPEG = `"${require('ffmpeg-static')}"`;
+const FFPROBE = `"${require('ffprobe-static').path}"`;
 const IMAGES_DIR = process.argv[2] || 'middle-images';
 const OUTPUT = process.argv[3] || path.join(__dirname, 'output/middle-slideshow.mp4');
 const DURATION = 9;
@@ -55,7 +56,7 @@ async function createSlideshow() {
         });
         fs.writeFileSync(jpgPath, outputBuffer);
       } else {
-        execSync(`convert "${inputPath}" "${jpgPath}"`, { stdio: 'ignore' });
+        await sharp(inputPath).jpeg().toFile(jpgPath);
       }
       return { file, success: true };
     } catch (e) {
@@ -80,14 +81,14 @@ async function createSlideshow() {
   
   for (let i = 0; i < totalFrames; i++) {
     const imgIndex = i % files.length;
-    const imgPath = path.resolve(tempDir, `img_${String(imgIndex + 1).padStart(2, '0')}.jpg`);
+    const imgPath = path.resolve(tempDir, `img_${String(imgIndex + 1).padStart(2, '0')}.jpg`).replace(/\\/g, '/');
     if (fs.existsSync(imgPath)) {
       listContent += `file '${imgPath}'\n`;
       listContent += `duration ${IMAGE_DURATION}\n`;
     }
   }
   const lastImgIndex = totalFrames % files.length;
-  const lastImg = path.resolve(tempDir, `img_${String(lastImgIndex + 1).padStart(2, '0')}.jpg`);
+  const lastImg = path.resolve(tempDir, `img_${String(lastImgIndex + 1).padStart(2, '0')}.jpg`).replace(/\\/g, '/');
   if (fs.existsSync(lastImg)) {
     listContent += `file '${lastImg}'\n`;
   }
@@ -98,7 +99,7 @@ async function createSlideshow() {
   console.log('Generating slideshow video...');
   const absoluteOutput = path.resolve(OUTPUT);
   execSync(
-    `${FFMPEG} -y -f concat -safe 0 -i "${listFile}" -r 30 -vf "scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2,setsar=1" -c:v libx264 -preset fast -crf 18 -pix_fmt yuv420p -t ${DURATION} "${absoluteOutput}"`,
+    `${FFMPEG} -y -f concat -safe 0 -i "${listFile.replace(/\\/g, '/')}" -r 30 -vf "scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2,setsar=1" -c:v libx264 -preset fast -crf 18 -pix_fmt yuv420p -t ${DURATION} "${absoluteOutput}"`,
     { stdio: 'inherit' }
   );
 
@@ -106,9 +107,7 @@ async function createSlideshow() {
   fs.rmSync(tempDir, { recursive: true, force: true });
   console.log('✓ Done\n');
 
-  const dur = execSync(`${FFMPEG} -i "${OUTPUT}" 2>&1 | grep Duration | cut -d' ' -f4 | cut -d',' -f1`).toString().trim();
   console.log(`✅ Saved: ${OUTPUT}`);
-  console.log(`Duration: ${dur}`);
 }
 
 createSlideshow().catch(err => {

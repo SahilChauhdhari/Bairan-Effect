@@ -4,8 +4,9 @@ const path = require('path');
 
 const workDir = process.argv[2] || '.';
 const OUTPUT_DIR = path.join(workDir, 'output');
-const FFMPEG = 'ffmpeg';
-const MAIN = path.join(workDir, 'main-video.MP4');
+const FFMPEG = `"${require('ffmpeg-static')}"`;
+const FFPROBE = `"${require('ffprobe-static').path}"`;
+const MAIN = path.join(workDir, 'rosh-freeze.MP4');
 const MIDDLE_SLIDESHOW = path.join(OUTPUT_DIR, 'middle-slideshow.mp4');
 const MIDDLE_VIDEO = path.join(workDir, 'middle-video.mp4');
 const MIDDLE = fs.existsSync(MIDDLE_SLIDESHOW) ? MIDDLE_SLIDESHOW : MIDDLE_VIDEO;
@@ -17,10 +18,8 @@ if (!fs.existsSync(OUTPUT_DIR)) {
 }
 
 function getDur(file) {
-  const cmd = `${FFMPEG} -i "${file}" 2>&1 | grep Duration | cut -d' ' -f4 | cut -d',' -f1`;
-  const dur = execSync(cmd).toString().trim();
-  const [h,m,s] = dur.split(':').map(Number);
-  return h*3600 + m*60 + s;
+  const cmd = `${FFPROBE} -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${file}"`;
+  return parseFloat(execSync(cmd).toString().trim());
 }
 
 function main() {
@@ -39,9 +38,9 @@ function main() {
   // Step 1: Extended main
   console.log('Step 1: Extended main...');
   const freezeDuration = total - mainDur;
-  // Extract last frame
-  execSync(`${FFMPEG} -i "${MAIN}" -ss ${mainDur - 0.1} -vframes 1 "${OUTPUT_DIR}/last-frame-for-loop.png" -y`, {stdio: 'inherit'});
-  // Create looped video from last frame
+  // Extract first frame
+  execSync(`${FFMPEG} -i "${MAIN}" -ss 0 -vframes 1 "${OUTPUT_DIR}/last-frame-for-loop.png" -y`, {stdio: 'inherit'});
+  // Create looped video from first frame
   execSync(`${FFMPEG} -loop 1 -i "${OUTPUT_DIR}/last-frame-for-loop.png" -c:v libx264 -preset ultrafast -pix_fmt yuv420p -r 30 -t ${freezeDuration} "${OUTPUT_DIR}/freeze-extension.mp4" -y`, {stdio: 'inherit'});
   // Concatenate original + freeze using filter_complex instead of concat demuxer
   execSync(`${FFMPEG} -i "${MAIN}" -i "${OUTPUT_DIR}/freeze-extension.mp4" -filter_complex "[0:v][1:v]concat=n=2:v=1:a=0[out]" -map [out] -c:v libx264 -preset ultrafast -pix_fmt yuv420p -r 30 "${OUTPUT_DIR}/extended-main.mp4" -y`, {stdio: 'inherit'});
@@ -53,8 +52,8 @@ function main() {
   // Scale middle first
   execSync(`${FFMPEG} -i "${MIDDLE}" -vf "scale=1080:1920" -c:v libx264 -preset ultrafast -pix_fmt yuv420p -r 30 -t ${midDur} "${OUTPUT_DIR}/middle-scaled.mp4" -y`, {stdio: 'inherit'});
   
-  // Extract frozen frame from extended main and loop it with proper colorspace
-  execSync(`${FFMPEG} -i "${OUTPUT_DIR}/extended-main.mp4" -ss ${mainDur - 0.1} -vframes 1 "${OUTPUT_DIR}/frozen-frame.png" -y`, {stdio: 'inherit'});
+  // Extract frozen frame from main and loop it with proper colorspace
+  execSync(`${FFMPEG} -i "${MAIN}" -ss 0 -vframes 1 "${OUTPUT_DIR}/frozen-frame.png" -y`, {stdio: 'inherit'});
   execSync(`${FFMPEG} -loop 1 -i "${OUTPUT_DIR}/frozen-frame.png" -vf "format=yuv420p" -c:v libx264 -preset ultrafast -pix_fmt yuv420p -r 30 -t ${midDur} "${OUTPUT_DIR}/frozen-bg.mp4" -y`, {stdio: 'inherit'});
   
   // Blend with expression - reveal from center expanding outward
